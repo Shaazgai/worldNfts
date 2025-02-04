@@ -14,26 +14,30 @@ import CollectiblePreviewCard from "@/components/atom/cards/collectible-preview-
 import {
   ImageFile,
   CollectionData,
-  LaunchType,
-  LaunchItemType,
-  MintFeeType,
+  InscriptionCollectible,
+  CreateLaunchParams,
+  LaunchParams,
 } from "@/lib/types";
 import TextArea from "@/components/ui/textArea";
 import {
   createCollection,
+  createMintCollection,
+  insriptionCollectible,
+  invokeOrderMint,
+  createLaunchItems,
   createLaunch,
-  launchItems,
-  mintFeeOfCitrea,
 } from "@/lib/service/postRequest";
 import useCreateFormState from "@/lib/store/createFormStore";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import CollectionUploadFile from "@/components/section/collection-upload-file";
 import Toggle from "@/components/ui/toggle";
 import { Calendar2, Clock, Bitcoin } from "iconsax-react";
+import OrderPayModal from "@/components/modal/order-pay-modal";
 import { useAuth } from "@/components/provider/auth-context-provider";
 import moment from "moment";
 import SuccessModal from "@/components/modal/success-modal";
 import { getLayerById } from "@/lib/service/queryHelper";
+import { ethers } from "ethers";
 import { getSigner } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -72,29 +76,40 @@ const Inscription = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [collectionId, setCollectionId] = useState<string>("");
   const [isChecked, setIsChecked] = useState<boolean>(false);
+  const [payModal, setPayModal] = useState(false);
   const [fileTypes, setFileTypes] = useState<Set<string>>(new Set());
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
   const [fileSizes, setFileSizes] = useState<number[]>([]);
 
-  const stepperData = ["Details", "Launch", "Upload", "Confirm"];
+  const stepperData = ["Details", "Upload", "Launch", "Confirm"];
   const [totalFileSize, setTotalFileSize] = useState<number>(0);
   const [fileTypeSizes, setFileTypeSizes] = useState<number[]>([]);
   const [successModal, setSuccessModal] = useState(false);
+  const [data, setData] = useState<string>("");
+  const [id, setId] = useState<string>("");
 
   const { mutateAsync: createCollectionMutation } = useMutation({
     mutationFn: createCollection,
   });
 
+  const { mutateAsync: createOrder } = useMutation({
+    mutationFn: createMintCollection,
+  });
+
+  const { mutateAsync: inscriptionMutation } = useMutation({
+    mutationFn: insriptionCollectible,
+  });
+
+  const { mutateAsync: invokeOrderMutation } = useMutation({
+    mutationFn: invokeOrderMint,
+  });
+
+  const { mutateAsync: launchItemsMutation } = useMutation({
+    mutationFn: createLaunchItems,
+  });
+
   const { mutateAsync: createLaunchMutation } = useMutation({
     mutationFn: createLaunch,
-  });
-
-  const { mutateAsync: launchItemMutation } = useMutation({
-    mutationFn: launchItems,
-  });
-
-  const { mutateAsync: mintFeeOfCitreaMutation } = useMutation({
-    mutationFn: mintFeeOfCitrea,
   });
 
   const updateFileInfo = (files: File[]) => {
@@ -162,7 +177,7 @@ const Inscription = () => {
       toast.error("Layer information not available");
       return;
     }
-    if (currentLayer.layer === "EDUCHAIN" && !window.ethereum) {
+    if (currentLayer.layer === "CITREA" && !window.ethereum) {
       toast.error("Please install MetaMask extension to continue");
       return;
     }
@@ -173,23 +188,21 @@ const Inscription = () => {
         description: description,
         logo: imageFile[0],
         priceForLaunchpad: 0.001,
-        type: "IPFS",
+        type: "INSCRIPTION",
         userLayerId: authState.userLayerId,
         layerId: selectedLayerId,
-        isBadge: false,
-        creator: creator,
       };
       if (params) {
         const response = await createCollectionMutation({ data: params });
         console.log("🚀 ~ handleCreateCollection ~ response:", response);
         if (response && response.success) {
-          const { id } = response.data.collection;
+          const { id } = response.data.ordinalCollection;
           const { deployContractTxHex } = response.data;
           setCollectionId(id);
           console.log("create collection success", response);
           toast.success("Create collection success.");
 
-          if (currentLayer.layer === "EDUCHAIN") {
+          if (currentLayer.layer === "CITREA") {
             const { signer } = await getSigner();
             const signedTx = await signer?.sendTransaction(deployContractTxHex);
             await signedTx?.wait();
@@ -246,12 +259,19 @@ const Inscription = () => {
     }
   };
 
+  const togglePayModal = () => {
+    setPayModal(!payModal);
+    // reset();
+  };
+
   const handleToggle = () => {
     setIsChecked(!isChecked);
+    // reset();
   };
 
   const handleDeleteLogo = () => {
     setImageFile([]); // Clear the imageFile array
+    // setImageLogo(null);
   };
 
   const handleBack = () => {
@@ -275,41 +295,6 @@ const Inscription = () => {
 
   const files = imageFiles.map((image) => image.file);
 
-  const handleMintfeeChange = async () => {
-    if (!currentLayer) {
-      toast.error("Layer information not available");
-      return false;
-    }
-    setIsLoading(true);
-    try {
-      const params: MintFeeType = {
-        collectionTxid: txid,
-        mintFee: POMintPrice.toString(),
-      };
-      const response = await mintFeeOfCitreaMutation({
-        data: params,
-        userLayerId: authState.userLayerId,
-      });
-      if (response && response.success) {
-        const { singleMintTxHex } = response.data;
-        console.log("create collection success", response);
-        toast.success("Create collection success.");
-
-        if (currentLayer.layer === "EDUCHAIN") {
-          const { signer } = await getSigner();
-          const signedTx = await signer?.sendTransaction(singleMintTxHex);
-          await signedTx?.wait();
-        }
-        setStep(2);
-      }
-    } catch (error) {
-      toast.error("Error creating launch.");
-      console.error("Error creating launch: ", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleCreateLaunch = async () => {
     setIsLoading(true);
     const poStartsAt = calculateTimeUntilDate(POStartsAtDate, POStartsAtTime);
@@ -318,7 +303,7 @@ const Inscription = () => {
     try {
       const batchSize = 10;
       const totalBatches = Math.ceil(files.length / batchSize);
-      const params: LaunchType = {
+      const params: LaunchParams = {
         collectionId: collectionId,
         isWhitelisted: false,
         poStartsAt: poStartsAt,
@@ -333,6 +318,8 @@ const Inscription = () => {
         const launchResponse = await createLaunchMutation({
           data: params,
           txid: txid,
+          totalFileSize: totalFileSize,
+          feeRate: 1,
         });
 
         if (!launchResponse?.data?.launch?.collectionId) {
@@ -340,19 +327,26 @@ const Inscription = () => {
         }
 
         const launchCollectionId = launchResponse.data.launch.collectionId;
+        console.log("Launch Collection ID:", launchCollectionId);
+
         // Process files in batches
         for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
           const start = batchIndex * batchSize;
           const end = Math.min(start + batchSize, files.length);
           const currentBatchFiles = files.slice(start, end);
 
-          const launchItemsData: LaunchItemType = {
+          const names = currentBatchFiles.map(
+            (_, index) => `${name.replace(/\s+/g, "")}-${start + index + 1}`
+          );
+
+          const launchItemsData: CreateLaunchParams = {
             files: currentBatchFiles,
+            names: names,
             collectionId: launchCollectionId,
             isLastBatch: batchIndex === totalBatches - 1,
           };
 
-          const response = await launchItemMutation({ data: launchItemsData });
+          const response = await launchItemsMutation({ data: launchItemsData });
 
           if (!response?.success) {
             throw new Error(`Failed to process batch ${batchIndex + 1}`);
@@ -376,16 +370,100 @@ const Inscription = () => {
     }
   };
 
-  const handleNavigation = () => {
-    router.push("/launchpad");
+  const handleNavigateToOrder = () => {
+    router.push(`/orders`);
     reset();
+  };
+
+  const handleNavigateToCreate = () => {
+    router.push(`/create`);
+    reset();
+  };
+
+  const handlePay = async () => {
+    if (!currentLayer) {
+      toast.error("Layer information not available");
+      return false;
+    }
+
+    setIsLoading(true);
+
+    // Process files in batches of 10
+    const batchSize = 10;
+    const totalBatches = Math.ceil(files.length / batchSize);
+    try {
+      if (collectionId && authState.userLayerId && totalFileSize) {
+        const response = await createOrder({
+          collectionId: collectionId,
+          feeRate: 1,
+          txid: txid,
+          userLayerId: authState.userLayerId,
+          totalFileSize: totalFileSize,
+          totalCollectibleCount: files.length,
+        });
+        if (response && response.success) {
+          let id;
+          await window.unisat.sendBitcoin(
+            response.data.order.fundingAddress,
+            Math.ceil(response.data.order.fundingAmount)
+          );
+
+          id = response.data.order.id;
+          setData(response.data.order.id);
+
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+
+          for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+            // Get the current batch of files
+            const start = batchIndex * batchSize;
+            const end = Math.min(start + batchSize, files.length);
+            const currentBatchFiles = files.slice(start, end);
+
+            const names = currentBatchFiles.map(
+              (_, index) => `${name.replace(/\s+/g, "")}-${start + index + 1}`
+            );
+            const params: InscriptionCollectible = {
+              files: currentBatchFiles,
+              collectionId: collectionId,
+              names: names, // Total count of all files
+            };
+
+            const colRes = await inscriptionMutation({ data: params });
+
+            if (colRes && colRes.success) {
+              // Small delay between batches to prevent rate limiting
+              if (batchIndex < totalBatches - 1) {
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+              }
+
+              // // Store the last successful order ID
+              // setData(colRes.data.order.id);
+            }
+
+            console.log("Batch upload index: ", batchIndex);
+          }
+
+          const orderRes = await invokeOrderMutation({
+            id: response.data.order.id,
+          });
+          if (orderRes && orderRes.success) {
+            toggleSuccessModal();
+          }
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to create order");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <Layout>
       <div className="flex flex-col w-full h-max bg-background pb-[148px]">
         <Header />
-        <div className="flex flex-col items-center gap-16 z-50">
+        <div className="flex flex-col items-center gap-16 z-50 mt-12">
           <Banner
             title={"Create Collection"}
             image={"/background-2.png"}
@@ -424,6 +502,7 @@ const Inscription = () => {
                   </div>
 
                   <TextArea
+                    // onReset={reset}
                     title="Description"
                     text="Description"
                     value={description}
@@ -455,6 +534,7 @@ const Inscription = () => {
                   onClick={handleCreateCollection}
                   disabled={isLoading}
                   className="w-full"
+                  // isLoading={isLoading}
                 >
                   {isLoading ? (
                     <Loader2
@@ -471,154 +551,10 @@ const Inscription = () => {
           )}
           {step == 1 && (
             <div className="w-[592px] items-start flex flex-col gap-16">
-              <div className="flex flex-col gap-8">
-                <div className="flex flex-col w-full gap-4">
-                  <div className="flex flex-row justify-between items-center">
-                    <p className="font-bold text-profileTitle text-neutral50">
-                      Public phase
-                    </p>
-                  </div>
-                  <p className="text-neutral200 text-lg">
-                    Take control of your digital creations. Our platform
-                    provides the tools you need to mint, manage, and monetize
-                    your NFT collections. Join a growing ecosystem of artists
-                    redefining the boundaries of digital art.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-row justify-between items-center">
-                    <p className="text-neutral50 text-xl font-medium">
-                      Start date
-                    </p>
-                    <div className="flex flex-row gap-4">
-                      <div className="relative flex items-center">
-                        <Input
-                          type="birthdaytime"
-                          placeholder="YYYY - MM - DD"
-                          className="pl-10 w-[184px]"
-                          value={POStartsAtDate}
-                          onChange={(e) => setPOStartsAtDate(e.target.value)}
-                        />
-                        <div className="absolute left-4">
-                          <Calendar2 size={20} color="#D7D8D8" />
-                        </div>
-                      </div>
-                      <div className="relative flex items-center">
-                        <Input
-                          placeholder="HH : MM"
-                          className="pl-10 w-[184px]"
-                          value={POStartsAtTime}
-                          onChange={(e) => setPOStartsAtTime(e.target.value)}
-                        />
-                        <div className="absolute left-4">
-                          <Clock size={20} color="#D7D8D8" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-row justify-between items-center">
-                    <p className="text-neutral50 text-xl font-medium">
-                      End date
-                    </p>
-                    <div className="flex flex-row gap-4">
-                      <div className="relative flex items-center">
-                        <Input
-                          type="birthdaytime"
-                          placeholder="YYYY - MM - DD"
-                          className="pl-10 w-[184px]"
-                          value={POEndsAtDate}
-                          onChange={(e) => setPOEndsAtDate(e.target.value)}
-                        />
-                        <div className="absolute left-4">
-                          <Calendar2 size={20} color="#D7D8D8" />
-                        </div>
-                      </div>
-                      <div className="relative flex items-center">
-                        <Input
-                          placeholder="HH : MM"
-                          className="pl-10 w-[184px]"
-                          value={POEndsAtTime}
-                          onChange={(e) => setPOEndsAtTime(e.target.value)}
-                        />
-                        <div className="absolute left-4">
-                          <Clock size={20} color="#D7D8D8" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-3">
-                  <p className="text-neutral50 text-lg font-medium">
-                    Public mint price
-                  </p>
-                  <div className="relative flex items-center">
-                    <Input
-                      onReset={reset}
-                      placeholder="Amount"
-                      className="w-full pl-10"
-                      type="number"
-                      value={POMintPrice}
-                      onChange={(e) => setPOMintPrice(Number(e.target.value))}
-                    />
-                    <div className="absolute left-4">
-                      <Bitcoin size={20} color="#D7D8D8" />
-                    </div>
-                    <div className="absolute right-4">
-                      <p className="text-md text-neutral200 font-medium">EDU</p>
-                    </div>
-                  </div>
-                  <p className="text-neutral200 text-sm pl-4">
-                    Enter 0 for free mints
-                  </p>
-                </div>
-                <div className="flex flex-col gap-3">
-                  <p className="text-lg text-neutral50 font-medium">
-                    Max mint per wallet
-                  </p>
-                  <Input
-                    onReset={reset}
-                    placeholder="0"
-                    value={POMaxMintPerWallet}
-                    type="number"
-                    onChange={(e) =>
-                      setPOMaxMintPerWallet(parseInt(e.target.value))
-                    }
-                  />
-                </div>
-              </div>
-              <div className="flex flex-row w-full gap-8">
-                <ButtonOutline title="Back" onClick={handleBack} />
-                <Button
-                  onClick={handleMintfeeChange}
-                  disabled={isLoading}
-                  className="flex items-center   border border-neutral400 rounded-xl text-neutral600 bg-brand font-bold  w-full justify-center"
-                >
-                  {isLoading ? (
-                    <Loader2
-                      className="animate-spin"
-                      color="#111315"
-                      size={24}
-                    />
-                  ) : (
-                    "Continue"
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
-          {step == 2 && (
-            <div className="w-[592px] items-start flex flex-col gap-16">
               <div className="flex flex-col w-full gap-8">
-                <div className="flex flex-col gap-4">
-                  <p className="font-bold text-profileTitle text-neutral50">
-                    Upload your Collection
-                  </p>
-                  <p className="text-lg text-neutral200">
-                    The NFTs you want to include for this brand or project.
-                    Please name your files sequentially, like ‘1.png’, ‘2.jpg’,
-                    ‘3.webp’, etc., according to their order and file type.
-                  </p>
-                </div>
+                <p className="font-bold text-profileTitle text-neutral50">
+                  Upload your Collection
+                </p>
                 {imageFiles.length !== 0 ? (
                   <div className="flex flex-row w-full h-full gap-8 overflow-x-auto">
                     {imageFiles.map((item, index) => (
@@ -643,12 +579,175 @@ const Inscription = () => {
                 <ButtonOutline title="Back" onClick={handleBack} />
                 <Button
                   className="flex w-full border border-neutral400 rounded-xl text-neutral600 bg-brand font-bold items-center justify-center"
-                  onClick={() => setStep(3)}
+                  // type="submit"
+                  onClick={() => setStep(2)}
+                  // isLoading={isLoading}
                   disabled={isLoading}
                 >
                   {isLoading ? (
                     <Loader2
                       className="animate-spin w-full"
+                      color="#111315"
+                      size={24}
+                    />
+                  ) : (
+                    "Continue"
+                  )}
+
+                  {/* {isLoading ? "...loading" : "Continue"} */}
+                </Button>
+              </div>
+            </div>
+          )}
+          {step == 2 && (
+            <div className="w-[592px] items-start flex flex-col gap-16">
+              <div className="flex flex-col w-full gap-4">
+                <div className="flex flex-row justify-between items-center">
+                  <p className="font-bold text-profileTitle text-neutral50">
+                    Launch on Mint Park
+                  </p>
+                  <Toggle isChecked={isChecked} onChange={handleToggle} />
+                </div>
+                <p className="text-neutral200 text-lg">
+                  Discover endless possibilities in digital creation. Our
+                  platform empowers artists and creators to bring their vision
+                  to life through unique NFT collections. With advanced tools
+                  and seamless integration, you can focus on what matters most -
+                  your creative expression.
+                </p>
+              </div>
+              {isChecked ? (
+                <div className="flex flex-col gap-8">
+                  <div className="flex flex-col w-full gap-4">
+                    <div className="flex flex-row justify-between items-center">
+                      <p className="font-bold text-profileTitle text-neutral50">
+                        Public phase
+                      </p>
+                    </div>
+                    <p className="text-neutral200 text-lg">
+                      Take control of your digital creations. Our platform
+                      provides the tools you need to mint, manage, and monetize
+                      your NFT collections. Join a growing ecosystem of artists
+                      redefining the boundaries of digital art.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-row justify-between items-center">
+                      <p className="text-neutral50 text-xl font-medium">
+                        Start date
+                      </p>
+                      <div className="flex flex-row gap-4">
+                        <div className="relative flex items-center">
+                          <Input
+                            type="birthdaytime"
+                            placeholder="YYYY - MM - DD"
+                            className="pl-10 w-[184px]"
+                            value={POStartsAtDate}
+                            onChange={(e) => setPOStartsAtDate(e.target.value)}
+                          />
+                          <div className="absolute left-4">
+                            <Calendar2 size={20} color="#D7D8D8" />
+                          </div>
+                        </div>
+                        <div className="relative flex items-center">
+                          <Input
+                            placeholder="HH : MM"
+                            className="pl-10 w-[184px]"
+                            value={POStartsAtTime}
+                            onChange={(e) => setPOStartsAtTime(e.target.value)}
+                          />
+                          <div className="absolute left-4">
+                            <Clock size={20} color="#D7D8D8" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-row justify-between items-center">
+                      <p className="text-neutral50 text-xl font-medium">
+                        End date
+                      </p>
+                      <div className="flex flex-row gap-4">
+                        <div className="relative flex items-center">
+                          <Input
+                            type="birthdaytime"
+                            placeholder="YYYY - MM - DD"
+                            className="pl-10 w-[184px]"
+                            value={POEndsAtDate}
+                            onChange={(e) => setPOEndsAtDate(e.target.value)}
+                          />
+                          <div className="absolute left-4">
+                            <Calendar2 size={20} color="#D7D8D8" />
+                          </div>
+                        </div>
+                        <div className="relative flex items-center">
+                          <Input
+                            placeholder="HH : MM"
+                            className="pl-10 w-[184px]"
+                            value={POEndsAtTime}
+                            onChange={(e) => setPOEndsAtTime(e.target.value)}
+                          />
+                          <div className="absolute left-4">
+                            <Clock size={20} color="#D7D8D8" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <p className="text-neutral50 text-lg font-medium">
+                      Public mint price
+                    </p>
+                    <div className="relative flex items-center">
+                      <Input
+                        onReset={reset}
+                        placeholder="Amount"
+                        className="w-full pl-10"
+                        type="number"
+                        value={POMintPrice}
+                        onChange={(e) => setPOMintPrice(Number(e.target.value))}
+                      />
+                      <div className="absolute left-4">
+                        <Bitcoin size={20} color="#D7D8D8" />
+                      </div>
+                      <div className="absolute right-4">
+                        <p className="text-md text-neutral200 font-medium">
+                          cBTC
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-neutral200 text-sm pl-4">
+                      Enter 0 for free mints
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <p className="text-lg text-neutral50 font-medium">
+                      Max mint per wallet
+                    </p>
+                    <Input
+                      onReset={reset}
+                      placeholder="0"
+                      value={POMaxMintPerWallet}
+                      type="number"
+                      onChange={(e) =>
+                        setPOMaxMintPerWallet(Number(e.target.value))
+                      }
+                    />
+                  </div>
+                </div>
+              ) : (
+                ""
+              )}
+              <div className="flex flex-row w-full gap-8">
+                <ButtonOutline title="Back" onClick={handleBack} />
+                <Button
+                  onClick={() => setStep(3)}
+                  // isLoading={isLoading}
+                  disabled={isLoading}
+                  className="flex items-center   border border-neutral400 rounded-xl text-neutral600 bg-brand font-bold  w-full justify-center"
+                >
+                  {isLoading ? (
+                    <Loader2
+                      className="animate-spin"
                       color="#111315"
                       size={24}
                     />
@@ -739,7 +838,8 @@ const Inscription = () => {
               <div className="flex flex-row gap-8">
                 <ButtonOutline title="Back" onClick={handleBack} />
                 <Button
-                  onClick={handleCreateLaunch}
+                  onClick={isChecked ? handleCreateLaunch : handlePay}
+                  // isLoading={isLoading}
                   disabled={isLoading}
                   className="flex justify-center border border-neutral400 rounded-xl text-neutral600 bg-brand font-bold  w-full items-center"
                 >
@@ -750,6 +850,7 @@ const Inscription = () => {
                       size={24}
                     />
                   ) : (
+                    // "Loading"
                     "Confirm"
                   )}
                 </Button>
@@ -758,11 +859,23 @@ const Inscription = () => {
           )}
         </div>
       </div>
+      <OrderPayModal
+        open={payModal}
+        onClose={togglePayModal}
+        fileTypeSizes={fileTypeSizes}
+        id={collectionId}
+        fileSizes={fileSizes}
+        files={files}
+        navigateOrders={handleNavigateToOrder}
+        navigateToCreate={handleNavigateToCreate}
+        hash={
+          "0x41aad9ebeee10d124f4abd123d1fd41dbb80162e339e9d61db7e90dd6139e89e"
+        }
+      />
       <SuccessModal
         open={successModal}
         onClose={toggleSuccessModal}
         handleCreate={handleCreate}
-        handleNavigation={handleNavigation}
       />
     </Layout>
   );
