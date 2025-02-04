@@ -10,29 +10,38 @@ import ButtonOutline from "@/components/ui/buttonOutline";
 import Layout from "@/components/layout/layout";
 import UploadCardFill from "@/components/atom/cards/upload-card-fill";
 import Image from "next/image";
-import { LaunchType, BadgeType } from "@/lib/types";
+import {
+  CollectionData,
+  LaunchType,
+  LaunchItemType,
+  MintFeeType,
+} from "@/lib/types";
 import TextArea from "@/components/ui/textArea";
 import {
-  createBadgeCollection,
-  createBadgeLaunch,
-  ifpsLaunchItem,
-  whitelistAddresses,
+  createCollection,
+  createLaunch,
+  launchItems,
+  mintFeeOfCitrea,
 } from "@/lib/service/postRequest";
 import useCreateFormState from "@/lib/store/createFormStore";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calendar2, Clock, Bitcoin, DocumentDownload } from "iconsax-react";
+import { Calendar2, Clock, Bitcoin } from "iconsax-react";
 import { useAuth } from "@/components/provider/auth-context-provider";
 import moment from "moment";
 import SuccessModal from "@/components/modal/success-modal";
 import { getLayerById } from "@/lib/service/queryHelper";
-import { cn, formatFileSize, getSigner } from "@/lib/utils";
+import { cn, getSigner } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { BADGE_BATCH_SIZE } from "@/lib/utils";
-import Toggle from "@/components/ui/toggle";
-import UploadJsonFile from "@/components/section/upload-json-file";
-import UploadJsonCard from "@/components/atom/cards/upload-json-card";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
 
 const Badge = () => {
   const router = useRouter();
@@ -58,18 +67,6 @@ const Badge = () => {
     setPOMintPrice,
     POMaxMintPerWallet,
     setPOMaxMintPerWallet,
-    WLStartsAtDate,
-    setWLStartsAtDate,
-    WLStartsAtTime,
-    setWLStartsAtTime,
-    WLEndsAtDate,
-    setWLEndsAtDate,
-    WLEndsAtTime,
-    setWLEndsAtTime,
-    WLMintPrice,
-    setWLMintPrice,
-    WLMaxMintPerWallet,
-    setWLMaxMintPerWallet,
     txid,
     setTxid,
     supply,
@@ -80,30 +77,28 @@ const Badge = () => {
   const [step, setStep] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [collectionId, setCollectionId] = useState<string>("");
-  const [jsonFile, setJsonFile] = useState<File | null>(null);
   const stepperData = ["Details", "Launch", "Upload", "Confirm"];
   const [successModal, setSuccessModal] = useState(false);
-  const [isChecked, setIsChecked] = useState(false);
-  const [whitelistAddress, setWhitelistAddress] = useState<string[]>([]);
+  const [date, setDate] = React.useState<Date>();
 
   const { mutateAsync: createCollectionMutation } = useMutation({
-    mutationFn: createBadgeCollection,
+    mutationFn: createCollection,
   });
 
   const { mutateAsync: createLaunchMutation } = useMutation({
-    mutationFn: createBadgeLaunch,
+    mutationFn: createLaunch,
   });
 
   const { mutateAsync: launchItemMutation } = useMutation({
-    mutationFn: ifpsLaunchItem,
+    mutationFn: launchItems,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["launchData"] });
       queryClient.invalidateQueries({ queryKey: ["collectionData"] });
     },
   });
 
-  const { mutateAsync: whitelistAddressesMutation } = useMutation({
-    mutationFn: whitelistAddresses,
+  const { mutateAsync: mintFeeOfCitreaMutation } = useMutation({
+    mutationFn: mintFeeOfCitrea,
   });
 
   const { data: currentLayer = [] } = useQuery({
@@ -149,46 +144,22 @@ const Badge = () => {
     }
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && file.type === "application/json") {
-      setJsonFile(file);
-      // Read and parse the JSON file
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const jsonData = JSON.parse(e.target?.result as string);
-          // Assuming the JSON file contains an array of addresses
-          if (Array.isArray(jsonData.addresses)) {
-            setWhitelistAddress(jsonData.addresses);
-          } else {
-            toast.error("Invalid JSON format. Expected an array of addresses.");
-          }
-        } catch (error) {
-          console.error("Error parsing JSON:", error);
-          toast.error("Invalid JSON file");
-        }
-      };
-      reader.readAsText(file);
-    }
-  };
-
   const handleCreateCollection = async () => {
     if (!currentLayer) {
       toast.error("Layer information not available");
       return;
     }
-    if (currentLayer.layer === "CITREA" && !window.ethereum) {
+    if (currentLayer.layer === "EDUCHAIN" && !window.ethereum) {
       toast.error("Please install MetaMask extension to continue");
       return;
     }
     setIsLoading(true);
     try {
-      const params: BadgeType = {
+      const params: CollectionData = {
         name: name,
         description: description,
         priceForLaunchpad: 0.001,
-        type: "IPFS_CID",
+        type: "IPFS",
         userLayerId: authState.userLayerId,
         layerId: selectedLayerId,
         isBadge: true,
@@ -198,12 +169,12 @@ const Badge = () => {
         const response = await createCollectionMutation({ data: params });
         console.log("🚀 ~ handleCreateCollection ~ response:", response);
         if (response && response.success) {
-          const { id } = response.data.l2Collection;
+          const { id } = response.data.collection;
           const { deployContractTxHex } = response.data;
           setCollectionId(id);
           console.log("create collection success", response);
 
-          if (currentLayer.layer === "CITREA") {
+          if (currentLayer.layer === "EDUCHAIN") {
             const { signer } = await getSigner();
             const signedTx = await signer?.sendTransaction(deployContractTxHex);
             await signedTx?.wait();
@@ -247,45 +218,46 @@ const Badge = () => {
     reset();
   };
 
-  const handleDeleteJson = () => {
-    setJsonFile(null);
+  const handleNavigation = () => {
+    router.push("/launchpad");
+    reset();
   };
 
   const toggleSuccessModal = () => {
     setSuccessModal(!successModal);
   };
 
-  // const handleMintfeeChange = async () => {
-  //   if (!currentLayer) {
-  //     toast.error("Layer information not available");
-  //     return false;
-  //   }
-  //   setIsLoading(true);
-  //   try {
-  //     const params: MintFeeType = {
-  //       collectionTxid: txid,
-  //       mintFee: POMintPrice.toString(),
-  //     };
-  //     const response = await mintFeeOfCitreaMutation({
-  //       data: params,
-  //       userLayerId: authState.userLayerId,
-  //     });
-  //     if (response && response.success) {
-  //       const { singleMintTxHex } = response.data;
-  //       if (currentLayer.layer === "CITREA") {
-  //         const { signer } = await getSigner();
-  //         const signedTx = await signer?.sendTransaction(singleMintTxHex);
-  //         await signedTx?.wait();
-  //       }
-  //       setStep(2);
-  //     }
-  //   } catch (error) {
-  //     toast.error("Error creating launch.");
-  //     console.error("Error creating launch: ", error);
-  //   } finally {
-  //     setIsLoading(false);
-  //   }
-  // };
+  const handleMintfeeChange = async () => {
+    if (!currentLayer) {
+      toast.error("Layer information not available");
+      return false;
+    }
+    setIsLoading(true);
+    try {
+      const params: MintFeeType = {
+        collectionTxid: txid,
+        mintFee: POMintPrice.toString(),
+      };
+      const response = await mintFeeOfCitreaMutation({
+        data: params,
+        userLayerId: authState.userLayerId,
+      });
+      if (response && response.success) {
+        const { singleMintTxHex } = response.data;
+        if (currentLayer.layer === "EDUCHAIN") {
+          const { signer } = await getSigner();
+          const signedTx = await signer?.sendTransaction(singleMintTxHex);
+          await signedTx?.wait();
+        }
+        setStep(2);
+      }
+    } catch (error) {
+      toast.error("Error creating launch.");
+      console.error("Error creating launch: ", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleCreateLaunch = async () => {
     if (!imageFile || imageFile.length === 0) {
@@ -296,89 +268,49 @@ const Badge = () => {
     setIsLoading(true);
     const poStartsAt = calculateTimeUntilDate(POStartsAtDate, POStartsAtTime);
     const poEndsAt = calculateTimeUntilDate(POEndsAtDate, POEndsAtTime);
-    const wlStartsAt = calculateTimeUntilDate(WLStartsAtDate, WLStartsAtTime);
-    const wlEndsAt = calculateTimeUntilDate(WLEndsAtDate, WLEndsAtTime);
 
     try {
       const params: LaunchType = {
         collectionId: collectionId,
-        isWhitelisted: isChecked ? true : false,
+        isWhitelisted: false,
         poStartsAt: poStartsAt,
         poEndsAt: poEndsAt,
         poMintPrice: POMintPrice,
         poMaxMintPerWallet: POMaxMintPerWallet,
-        wlStartsAt: wlStartsAt,
-        wlEndsAt: wlEndsAt,
-        wlMintPrice: WLMintPrice,
-        wlMaxMintPerWallet: WLMaxMintPerWallet,
         userLayerId: authState.userLayerId,
       };
 
       if (params) {
+        // Launch the collection using the imageFile instead of files array
         const launchResponse = await createLaunchMutation({
           data: params,
           txid: txid,
-          badge: imageFile[0],
+          badge: imageFile[0], // Pass the first (and only) file from imageFile array
           badgeSupply: supply,
         });
 
         if (launchResponse && launchResponse.success) {
-          const collectionId = launchResponse.data.launch.collectionId;
-          const launchId = launchResponse.data.launch.id;
+          let response;
+          const launchCollectionId = launchResponse.data.launch.collectionId;
 
-          for (let i = 0; i < Math.ceil(supply / 25); i++) {
-            const response = await launchItemMutation({
-              collectionId: collectionId,
-            });
+          const launchItemsData: LaunchItemType = {
+            collectionId: launchCollectionId,
+          };
+
+          for (
+            let i = 0;
+            i < Math.ceil(Number(supply) / BADGE_BATCH_SIZE);
+            i++
+          ) {
+            response = await launchItemMutation({ data: launchItemsData });
           }
 
-          // while (!isDone && retryCount < maxRetries) {
-
-          //   if (response && response.success) {
-          //     isDone = response.data.isDone;
-          //   }
-
-          //   retryCount++;
-          //   if (!isDone && retryCount < maxRetries) {
-          //     await new Promise((resolve) => setTimeout(resolve, retryDelay));
-          //   }
-          // }
-
-          // if (!isDone) {
-          //   toast.error("Launch item creation timed out. Please try again.");
-          // }
-
-          // if (isDone) {
-          // Process whitelist if enabled
-          if (isChecked) {
-            try {
-              let whResponse;
-              // Process whitelist addresses in batches of 50
-              for (
-                let i = 0;
-                i < Math.ceil(whitelistAddress.length / 50);
-                i++
-              ) {
-                const batch = whitelistAddress.slice(i * 50, (i + 1) * 50);
-                whResponse = await whitelistAddressesMutation({
-                  launchId: launchId,
-                  addresses: batch,
-                });
-              }
-              if (whResponse && whResponse.success) {
-                console.log("Whitelist processing completed");
-                toggleSuccessModal();
-              }
-            } catch (error) {
-              console.error("Error processing whitelist:", error);
-              toast.error("Error processing whitelist addresses");
-            }
-          } else {
+          if (response && response.success) {
+            console.log("create collection success", response);
             toggleSuccessModal();
           }
         }
       }
-      // }
     } catch (error) {
       console.error("Error creating launch:", error);
       toast.error(
@@ -389,15 +321,11 @@ const Badge = () => {
     }
   };
 
-  const toggleWhiteList = () => {
-    setIsChecked(!isChecked);
-  };
-
   return (
     <Layout>
       <div className="flex flex-col w-full h-max bg-background pb-[148px]">
         <Header />
-        <div className="flex flex-col items-center gap-16 z-50 mt-16">
+        <div className="flex flex-col items-center gap-16 z-50">
           <Banner
             title={"Create Badge"}
             image={"/background-2.png"}
@@ -467,172 +395,6 @@ const Badge = () => {
           )}
           {step == 1 && (
             <div className="w-[592px] items-start flex flex-col gap-16">
-              <div className="flex flex-col w-full gap-4">
-                <div className="flex flex-row justify-between items-center">
-                  <p className="font-bold text-profileTitle text-neutral50">
-                    Launch on Mint Park
-                  </p>
-                </div>
-                <p className="text-neutral200 text-lg">
-                  Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin
-                  ac ornare nisi. Aliquam eget semper risus, sed commodo elit.
-                  Curabitur sed congue magna. Donec ultrices dui nec ullamcorper
-                  aliquet. Nunc efficitur mauris id mi venenatis imperdiet.
-                  Integer mauris lectus, pretium eu nibh molestie, rutrum
-                  lobortis tortor. Duis sit amet sem fermentum, consequat est
-                  nec, ultricies justo.
-                </p>
-              </div>
-              <div className="flex flex-col gap-4 w-full">
-                <div className="flex flex-row w-full justify-between">
-                  <p className="font-bold text-profileTitle text-neutral50">
-                    Include whitelist phase
-                  </p>
-                  <Toggle isChecked={isChecked} onChange={toggleWhiteList} />
-                </div>
-                {isChecked && (
-                  <div className="w-full flex flex-col gap-8">
-                    <p className="text-neutral200 text-lg">
-                      Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-                      Proin ac ornare nisi. Aliquam eget semper risus, sed
-                      commodo elit. Curabitur sed congue magna. Donec ultrices
-                      dui nec ullamcorper aliquet. Nunc efficitur mauris id mi
-                      venenatis imperdiet. Integer mauris lectus, pretium eu
-                      nibh molestie, rutrum lobortis tortor. Duis sit amet sem
-                      fermentum, consequat est nec, ultricies justo.
-                    </p>
-                    <Button
-                      className="w-fit flex gap-3 items-center"
-                      variant={"outline"}
-                    >
-                      <span>
-                        <DocumentDownload size={24} color="#FFFFFF" />
-                      </span>
-                      Download sample .json for connect formatting
-                    </Button>
-                    {jsonFile ? (
-                      <UploadJsonCard
-                        title={jsonFile.name}
-                        size={formatFileSize(jsonFile.size)}
-                        onDelete={handleDeleteJson}
-                      />
-                    ) : (
-                      <UploadJsonFile
-                        text="Accepted file types: JSON"
-                        handleImageUpload={handleFileUpload}
-                      />
-                    )}
-                    <div className="flex flex-col gap-4">
-                      <div className="flex flex-row justify-between items-center">
-                        <p className="text-neutral50 text-xl font-medium">
-                          Start date
-                        </p>
-                        <div className="flex flex-row gap-4">
-                          <div className="relative flex items-center">
-                            <Input
-                              type="birthdaytime"
-                              placeholder="YYYY - MM - DD"
-                              className="pl-10 w-[184px]"
-                              value={WLStartsAtDate}
-                              onChange={(e) =>
-                                setWLStartsAtDate(e.target.value)
-                              }
-                            />
-                            <div className="absolute left-4">
-                              <Calendar2 size={20} color="#D7D8D8" />
-                            </div>
-                          </div>
-                          <div className="relative flex items-center">
-                            <Input
-                              placeholder="HH : MM"
-                              className="pl-10 w-[184px]"
-                              value={WLStartsAtTime}
-                              onChange={(e) =>
-                                setWLStartsAtTime(e.target.value)
-                              }
-                            />
-                            <div className="absolute left-4">
-                              <Clock size={20} color="#D7D8D8" />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex flex-row justify-between items-center">
-                        <p className="text-neutral50 text-xl font-medium">
-                          End date
-                        </p>
-                        <div className="flex flex-row gap-4">
-                          <div className="relative flex items-center">
-                            <Input
-                              type="birthdaytime"
-                              placeholder="YYYY - MM - DD"
-                              className="pl-10 w-[184px]"
-                              value={WLEndsAtDate}
-                              onChange={(e) => setWLEndsAtDate(e.target.value)}
-                            />
-                            <div className="absolute left-4">
-                              <Calendar2 size={20} color="#D7D8D8" />
-                            </div>
-                          </div>
-                          <div className="relative flex items-center">
-                            <Input
-                              placeholder="HH : MM"
-                              className="pl-10 w-[184px]"
-                              value={WLEndsAtTime}
-                              onChange={(e) => setWLEndsAtTime(e.target.value)}
-                            />
-                            <div className="absolute left-4">
-                              <Clock size={20} color="#D7D8D8" />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-3">
-                      <p className="text-neutral50 text-lg font-medium">
-                        Whitelist mint price
-                      </p>
-                      <div className="relative flex items-center">
-                        <Input
-                          onReset={reset}
-                          placeholder="Amount"
-                          className="w-full pl-10"
-                          type="number"
-                          value={WLMintPrice}
-                          onChange={(e) =>
-                            setWLMintPrice(Number(e.target.value))
-                          }
-                        />
-                        <div className="absolute left-4">
-                          <Bitcoin size={20} color="#D7D8D8" />
-                        </div>
-                        <div className="absolute right-4">
-                          <p className="text-md text-neutral200 font-medium">
-                            BTC
-                          </p>
-                        </div>
-                      </div>
-                      <p className="text-neutral200 text-sm pl-4">
-                        Enter 0 for free mints
-                      </p>
-                    </div>
-                    <div className="flex flex-col gap-3">
-                      <p className="text-lg text-neutral50 font-medium">
-                        Max mint per wallet
-                      </p>
-                      <Input
-                        onReset={reset}
-                        placeholder="0"
-                        value={WLMaxMintPerWallet}
-                        type="number"
-                        onChange={(e) =>
-                          setWLMaxMintPerWallet(parseInt(e.target.value))
-                        }
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
               <div className="flex flex-col gap-8">
                 <div className="flex flex-col w-full gap-4">
                   <div className="flex flex-row justify-between items-center">
@@ -641,13 +403,10 @@ const Badge = () => {
                     </p>
                   </div>
                   <p className="text-neutral200 text-lg">
-                    Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-                    Proin ac ornare nisi. Aliquam eget semper risus, sed commodo
-                    elit. Curabitur sed congue magna. Donec ultrices dui nec
-                    ullamcorper aliquet. Nunc efficitur mauris id mi venenatis
-                    imperdiet. Integer mauris lectus, pretium eu nibh molestie,
-                    rutrum lobortis tortor. Duis sit amet sem fermentum,
-                    consequat est nec, ultricies justo.
+                    Take control of your digital creations. Our platform
+                    provides the tools you need to mint, manage, and monetize
+                    your NFT collections. Join a growing ecosystem of artists
+                    redefining the boundaries of digital art.
                   </p>
                 </div>
                 <div className="flex flex-col gap-4">
@@ -739,9 +498,7 @@ const Badge = () => {
                       <Bitcoin size={20} color="#D7D8D8" />
                     </div>
                     <div className="absolute right-4">
-                      <p className="text-md text-neutral200 font-medium">
-                        cBTC
-                      </p>
+                      <p className="text-md text-neutral200 font-medium">EDU</p>
                     </div>
                   </div>
                   <p className="text-neutral200 text-sm pl-4">
@@ -766,7 +523,7 @@ const Badge = () => {
               <div className="flex flex-row w-full gap-8">
                 <ButtonOutline title="Back" onClick={handleBack} />
                 <Button
-                  onClick={() => setStep(2)}
+                  onClick={handleMintfeeChange}
                   disabled={isLoading}
                   className="flex items-center   border border-neutral400 rounded-xl text-neutral600 bg-brand font-bold  w-full justify-center"
                 >
@@ -852,43 +609,6 @@ const Badge = () => {
                   <p className="text-neutral100 text-lg">{description}</p>
                 </div>
               </div>
-              {isChecked && (
-                <div className="flex flex-col gap-8 w-full">
-                  <p className="text-[28px] leading-9 text-neutral50 font-bold">
-                    WhiteList phase
-                  </p>
-                  <div className="flex flex-col gap-4">
-                    <div className="flex flex-row justify-between items-center">
-                      <p className="text-neutral200 text-lg">Start date</p>
-                      <p className="text-neutral50 text-lg font-bold">
-                        {WLStartsAtDate},{WLStartsAtTime}
-                      </p>
-                    </div>
-                    <div className="flex flex-row justify-between items-center">
-                      <p className="text-neutral200 text-lg">End date</p>
-                      <p className="text-neutral50 text-lg font-bold">
-                        {WLEndsAtDate},{WLEndsAtTime}
-                      </p>
-                    </div>
-                    <div className="flex flex-row justify-between items-center">
-                      <p className="text-neutral200 text-lg">
-                        Public mint price
-                      </p>
-                      <p className="text-neutral50 text-lg font-bold">
-                        {WLMintPrice}
-                      </p>
-                    </div>
-                    <div className="flex flex-row justify-between items-center">
-                      <p className="text-neutral200 text-lg">
-                        Max mint per wallet
-                      </p>
-                      <p className="text-neutral50 text-lg font-bold">
-                        {WLMaxMintPerWallet}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
               <div className="flex flex-col gap-8 w-full">
                 <p className="text-[28px] leading-9 text-neutral50 font-bold">
                   Public phase
@@ -952,6 +672,7 @@ const Badge = () => {
         open={successModal}
         onClose={toggleSuccessModal}
         handleCreate={handleCreate}
+        handleNavigation={handleNavigation}
       />
     </Layout>
   );

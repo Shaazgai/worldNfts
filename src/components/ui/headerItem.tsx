@@ -21,7 +21,7 @@ const HeaderItem: React.FC<itemProps> = ({ title, handleNav }) => {
         onMouseLeave={() => setShowDiv(false)}
       >
         <p
-          className={`${title === "Create" ? "text-neutral200" : "text-neutral00"} ${title === "Create" ? "" : "hover:text-brand"} text-md`}
+          className={`${title === "Create" ? "text-neutral000" : "text-neutral00"} ${title === "Create" ? "" : "hover:text-brand"} text-md`}
         >
           {title}
         </p>

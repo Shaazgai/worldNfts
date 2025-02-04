@@ -480,23 +480,36 @@ export async function invokeOrderMint({ id }: { id: string }) {
 export async function createLaunch({
   data,
   txid,
-  totalFileSize,
-  feeRate,
+  badge,
+  badgeSupply,
 }: {
   data: LaunchParams;
   txid: string;
-  totalFileSize: number;
-  feeRate: number;
+  badge?: File;
+  badgeSupply?: number;
 }) {
   const formData = new FormData();
+
+  if (badge instanceof File) {
+    formData.append("badge", badge);
+    console.log(
+      `Appending file: ${badge.name}, size: ${badge.size}, type: ${badge.type}`
+    );
+  } else if (badge) {
+    console.error("Invalid file:", badge);
+    throw new Error("Invalid file object provided");
+  }
 
   const dataLaunch = data;
   formData.append("data", JSON.stringify(dataLaunch));
 
   // Append other data
+  if (typeof badgeSupply !== "undefined") {
+    formData.append("badgeSupply", badgeSupply.toString());
+  }
+
+  // Append other data
   formData.append("txid", txid);
-  formData.append("totalFileSize", totalFileSize.toString());
-  formData.append("feeRate", feeRate.toString());
   console.log("FormData contents:");
   // Use Array.from() to convert the iterator to an array
   Array.from(formData.keys()).forEach((key) => {
