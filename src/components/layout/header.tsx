@@ -104,9 +104,9 @@ export default function Header() {
     {
       title: "Create",
       pageUrl: "/create",
-      requiresAuth: true,
-      disabled: true,
-      badge: "Soon",
+      // requiresAuth: true,
+      // disabled: true,
+      // badge: "Soon",
     },
     { title: "Launchpad", pageUrl: "/launchpad" },
     { title: "Collections", pageUrl: "/collections" },
@@ -197,18 +197,18 @@ export default function Header() {
                 {/* Desktop Navigation */}
                 <div className="hidden lg:flex flex-row gap-2 text-neutral00">
                   {routesData.map((item, index) => (
-                    <div key={index} className="relative">
+                    <div key={index} className="relative text-neutral00">
                       <HeaderItem
                         title={item.title}
                         handleNav={() =>
                           handleNavigation(
                             item.pageUrl,
-                            item.requiresAuth,
-                            item.disabled
+                            // item.requiresAuth,
+                            // item.disabled
                           )
                         }
                       />
-                      {item.badge && <Badge label={item.badge} />}
+                      {/* {item.badge && <Badge label={item.badge} />} */}
                     </div>
                   ))}
                 </div>
@@ -385,13 +385,13 @@ export default function Header() {
                     onClick={() =>
                       handleNavigation(
                         item.pageUrl,
-                        item.requiresAuth,
-                        item.disabled
+                        // item.requiresAuth,
+                        // item.disabled
                       )
                     }
                   >
                     {item.title}
-                    {item.badge && <Badge label={item.badge} />}
+                    {/* {item.badge && <Badge label={item.badge} />} */}
                   </button>
                 </div>
               ))}

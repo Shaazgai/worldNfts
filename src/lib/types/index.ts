@@ -3,15 +3,29 @@ export interface ImageFile {
   preview: string;
 }
 
+// export type CollectionData = {
+//   logo: File;
+//   // creator: string;
+//   description: string;
+//   name: string;
+//   priceForLaunchpad: number;
+//   type: string;
+//   userLayerId: string | null;
+//   layerId: string | null;
+//   isBadge: boolean;
+//   creator: string;
+// };
+
 export type CollectionData = {
-  logo: File;
-  // creator: string;
+  logo?: File;
   description: string;
   name: string;
   priceForLaunchpad: number;
   type: string;
   userLayerId: string | null;
   layerId: string | null;
+  isBadge: boolean;
+  creator: string;
 };
 
 export type LayerType = {

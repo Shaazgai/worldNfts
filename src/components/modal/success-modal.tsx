@@ -1,11 +1,5 @@
 import React from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-} from "../ui/dialog";
-import { X } from "lucide-react";
+import { Dialog, DialogContent, DialogFooter } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { TickCircle } from "iconsax-react";
 import { useRouter } from "next/navigation";
@@ -14,20 +8,23 @@ interface ModalProps {
   open: boolean;
   onClose: () => void;
   handleCreate: () => void;
+  handleNavigation: () => void;
 }
 
-const SuccessModal: React.FC<ModalProps> = ({ open, onClose, handleCreate }) => {
-    const router = useRouter();
-    const handleNavigation = () => {
-        router.push("/launchpad");
-      };
+const SuccessModal: React.FC<ModalProps> = ({
+  open,
+  onClose,
+  handleCreate,
+  handleNavigation,
+}) => {
+  const router = useRouter();
   return (
     <>
       <Dialog open={open} onOpenChange={onClose}>
         <DialogContent className="flex flex-col p-6 gap-6 max-w-[592px] w-full items-center">
           <div className="w-full flex flex-col gap-8 pt-12 pb-8 bg-white4 justify-center items-center rounded-2xl">
             <div className="p-4 flex justify-center items-center bg-white8 rounded-2xl">
-              <TickCircle size={48} color="#FFEE32" />
+              <TickCircle size={48} color="#0FD577" />
             </div>
             <div className="flex flex-col gap-3 justify-center items-center">
               <p className="text-brand text-2xl font-bold">Success!</p>
