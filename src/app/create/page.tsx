@@ -63,8 +63,10 @@ const Create = () => {
       icon: BuyCrypto,
       title: "Collection",
       text: "A group of NFTs, best for brands and projects.",
-      pageUrl: null,
-      action: toggleModal,
+      // pageUrl: null,
+      // action: toggleModal,
+      pageUrl: "/create/collection/inscription",
+      action: undefined,
     },
     {
       id: 2,

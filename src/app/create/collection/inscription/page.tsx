@@ -75,7 +75,7 @@ const Inscription = () => {
   const [step, setStep] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [collectionId, setCollectionId] = useState<string>("");
-  const [isChecked, setIsChecked] = useState<boolean>(false);
+  const [isChecked, setIsChecked] = useState<boolean>(true);
   const [payModal, setPayModal] = useState(false);
   const [fileTypes, setFileTypes] = useState<Set<string>>(new Set());
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
@@ -606,7 +606,7 @@ const Inscription = () => {
                   <p className="font-bold text-profileTitle text-neutral50">
                     Launch on Mint Park
                   </p>
-                  <Toggle isChecked={isChecked} onChange={handleToggle} />
+                  {/* <Toggle isChecked={isChecked} onChange={handleToggle} /> */}
                 </div>
                 <p className="text-neutral200 text-lg">
                   Discover endless possibilities in digital creation. Our
