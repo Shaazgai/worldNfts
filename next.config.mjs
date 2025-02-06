@@ -11,6 +11,7 @@ const nextConfig = {
     unoptimized: true,
     domains: [
       "numadlabs-coordinals-test.s3.eu-central-1.amazonaws.com",
+      "https://d2siqigodljd9k.cloudfront.net",
       "d1orw8h9a3ark2.cloudfront.net",
       "d237xcwu5voimf.cloudfront.net",
       "images.unsplash.com",
